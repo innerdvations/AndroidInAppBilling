@@ -29,7 +29,8 @@ public class InAppBillingPlugin extends CordovaPlugin {
 	private final Boolean ENABLE_DEBUG_LOGGING = true;
 	private final String TAG = "CORDOVA_BILLING";
 
-
+  static String state = "";
+  
     // (arbitrary) request code for the purchase flow
     static final int RC_REQUEST = 10001;
 
@@ -53,6 +54,17 @@ public class InAppBillingPlugin extends CordovaPlugin {
 		try {
 			// Action selector
 			if ("init".equals(action)) {
+      
+        if(state == "initializing") {
+          Log.d(TAG, "IAB already initializing");
+          callbackContext.error("IAB already initializing");
+          return true;
+        }
+        if(state == "initialized") {
+          callbackContext.success();
+          return true;
+        }
+        state = "initializing";
 				final List<String> sku = new ArrayList<String>();
 				if(data.length() > 0){
 					JSONArray jsonSkuList = new JSONArray(data.getString(0));
@@ -150,23 +162,29 @@ public class InAppBillingPlugin extends CordovaPlugin {
 
                 if (!result.isSuccess()) {
                     // Oh no, there was a problem.
+                    state = "";
                     callbackContext.error("Problem setting up in-app billing: " + result);
                     return;
                 }
                 
                 // Have we been disposed of in the meantime? If so, quit.
                 if (mHelper == null) {
+                  state = "";
                 	callbackContext.error("The billing helper has been disposed");
+                  return;
                 }
 
                 // Hooray, IAB is fully set up. Now, let's get an inventory of stuff we own.
                 if(skus.size() <= 0){
-					Log.d(TAG, "Setup successful. Querying inventory.");
-                	mHelper.queryInventoryAsync(mGotInventoryListener);
-				}else{
-					Log.d(TAG, "Setup successful. Querying inventory w/ SKUs.");
-					mHelper.queryInventoryAsync(true, skus, mGotInventoryListener);
-				}
+                  Log.d(TAG, "Setup successful. Querying inventory.");
+                  mHelper.queryInventoryAsync(mGotInventoryListener);
+                  return;
+                }
+                else {
+                  Log.d(TAG, "Setup successful. Querying inventory w/ SKUs.");
+                  mHelper.queryInventoryAsync(true, skus, mGotInventoryListener);
+                  return;
+                }
             }			
         });
     }
@@ -179,6 +197,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
 		final String payload = "";
 		
 		if (mHelper == null){
+      state = "";
 			callbackContext.error("Billing plugin was not initialized");
 			return;
 		}
@@ -193,6 +212,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
 	// Buy an item
 	private void subscribe(final String sku){
 		if (mHelper == null){
+      state = "";
 			callbackContext.error("Billing plugin was not initialized");
 			return;
 		}
@@ -259,6 +279,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
 	//Get SkuDetails for skus
 	private void getProductDetails(final List<String> skus){
 		if (mHelper == null){
+      state = "";
 			callbackContext.error("Billing plugin was not initialized");
 			return;
 		}
@@ -271,6 +292,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
 	private void consumePurchase(JSONArray data) throws JSONException{
 		
 		if (mHelper == null){
+      state = "";
 			callbackContext.error("Did you forget to initialize the plugin?");
 			return;
 		} 
@@ -288,14 +310,13 @@ public class InAppBillingPlugin extends CordovaPlugin {
 	
 	// Listener that's called when we finish querying the items and subscriptions we own
     IabHelper.QueryInventoryFinishedListener mGotInventoryListener = new IabHelper.QueryInventoryFinishedListener() {
-        public void onQueryInventoryFinished(IabResult result, Inventory inventory) {
-        	Log.d(TAG, "Inside mGotInventoryListener");
-        	if (hasErrorsAndUpdateInventory(result, inventory)) return;
-
-            Log.d(TAG, "Query inventory was successful.");
-            callbackContext.success();
-            
-        }
+      public void onQueryInventoryFinished(IabResult result, Inventory inventory) {
+        Log.d(TAG, "Inside mGotInventoryListener");
+        if (hasErrorsAndUpdateInventory(result, inventory)) return;
+        state = "initialized";
+        Log.d(TAG, "Query inventory was successful.");
+        callbackContext.success();
+      }
     };
     // Listener that's called when we finish querying the details
     IabHelper.QueryInventoryFinishedListener mGotDetailsListener = new IabHelper.QueryInventoryFinishedListener() {
@@ -324,12 +345,14 @@ public class InAppBillingPlugin extends CordovaPlugin {
     // Check if there is any errors in the iabResult and update the inventory
     private Boolean hasErrorsAndUpdateInventory(IabResult result, Inventory inventory){
     	if (result.isFailure()) {
+          state = "";
         	callbackContext.error("Failed to query inventory: " + result);
         	return true;
         }
         
         // Have we been disposed of in the meantime? If so, quit.
         if (mHelper == null) {
+          state = "";
         	callbackContext.error("The billing helper has been disposed");
         	return true;
         }
@@ -347,6 +370,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
             
             // Have we been disposed of in the meantime? If so, quit.
             if (mHelper == null) {
+              state = "";
             	callbackContext.error("The billing helper has been disposed");
             }
             
@@ -456,6 +480,7 @@ public class InAppBillingPlugin extends CordovaPlugin {
     public void onDestroy() {
     	super.onDestroy();
     	
+      state = "";
     	// very important:
     	Log.d(TAG, "Destroying helper.");
     	if (mHelper != null) {
